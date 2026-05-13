@@ -1,0 +1,40 @@
+name: Self-test
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Write a minimal Markdown input
+        run: |
+          mkdir -p tmp
+          cat > tmp/sample.md <<'EOF'
+          ---
+          title: Smoke test
+          ---
+
+          # Hello
+
+          A minimal smoke test for the glu action.
+          EOF
+
+      - name: Render with glu (latest)
+        id: render
+        uses: ./
+        with:
+          input: tmp/sample.md
+          output: out/sample.pdf
+
+      - name: Verify output
+        run: |
+          test -s "${{ steps.render.outputs.output_path }}"
+          file "${{ steps.render.outputs.output_path }}" | grep -q PDF

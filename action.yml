@@ -1,0 +1,125 @@
+name: 'Setup and run glu'
+description: 'Render Markdown, HTML, or Lua to PDF using glu (boxes and glue).'
+author: 'Patrick Gundlach'
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  input:
+    description: 'Input file (.md, .html, or .lua). Required.'
+    required: true
+  output:
+    description: 'Output PDF path. Defaults to <input>.pdf next to the input.'
+    required: false
+    default: ''
+  css:
+    description: 'Additional CSS file passed via --css.'
+    required: false
+    default: ''
+  version:
+    description: 'glu release tag to install (e.g. v0.2.0). Use "latest" for the most recent release.'
+    required: false
+    default: 'latest'
+  args:
+    description: 'Extra arguments passed verbatim to glu (escape hatch for flags not modelled above).'
+    required: false
+    default: ''
+
+outputs:
+  output_path:
+    description: 'Resolved path of the produced PDF.'
+    value: ${{ steps.run.outputs.output_path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve platform and version
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "$(uname -s)" in
+          Linux)  OS=linux ;;
+          Darwin) OS=macos ;;
+          *) echo "::error::Unsupported OS: $(uname -s)"; exit 1 ;;
+        esac
+        case "$(uname -m)" in
+          x86_64|amd64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "::error::Unsupported arch: $(uname -m)"; exit 1 ;;
+        esac
+
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(gh release view --repo boxesandglue/glu --json tagName --jq .tagName)
+        fi
+
+        echo "os=$OS" >> "$GITHUB_OUTPUT"
+        echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "name=glu-${OS}-${ARCH}" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Download glu
+      shell: bash
+      run: |
+        set -euo pipefail
+        NAME="${{ steps.resolve.outputs.name }}"
+        VERSION="${{ steps.resolve.outputs.version }}"
+        URL="https://github.com/boxesandglue/glu/releases/download/${VERSION}/${NAME}.tar.gz"
+
+        TARGET="$RUNNER_TEMP/glu-bin"
+        mkdir -p "$TARGET"
+        echo "Downloading $URL"
+        curl -fsSL -o "$RUNNER_TEMP/glu.tgz" "$URL"
+        tar -xzf "$RUNNER_TEMP/glu.tgz" -C "$TARGET" --strip-components=1
+        chmod +x "$TARGET/glu"
+        echo "$TARGET" >> "$GITHUB_PATH"
+
+    - name: Run glu
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        INPUT="${{ inputs.input }}"
+        OUTPUT="${{ inputs.output }}"
+        CSS="${{ inputs.css }}"
+        EXTRA="${{ inputs.args }}"
+
+        if [ -z "$INPUT" ]; then
+          echo "::error::input is required"
+          exit 1
+        fi
+
+        CMD=(glu)
+        [ -n "$OUTPUT" ] && CMD+=(-o "$OUTPUT")
+        [ -n "$CSS" ]    && CMD+=(--css "$CSS")
+        # Extra args: split on whitespace (word-splitting on purpose).
+        # Quoted arguments are not preserved — for that, pre-quote in
+        # the workflow or use a wrapper script.
+        if [ -n "$EXTRA" ]; then
+          # shellcheck disable=SC2206
+          EXTRA_ARR=($EXTRA)
+          CMD+=("${EXTRA_ARR[@]}")
+        fi
+        CMD+=("$INPUT")
+
+        # Make sure the output directory exists when an explicit output was given.
+        if [ -n "$OUTPUT" ]; then
+          mkdir -p "$(dirname "$OUTPUT")"
+        fi
+
+        echo "Running: ${CMD[*]}"
+        "${CMD[@]}"
+
+        # Echo the resolved output path so callers can pick it up as a step output.
+        if [ -n "$OUTPUT" ]; then
+          RESOLVED="$OUTPUT"
+        else
+          # glu defaults to <input-without-ext>.pdf next to the input
+          RESOLVED="${INPUT%.*}.pdf"
+        fi
+        echo "output_path=$RESOLVED" >> "$GITHUB_OUTPUT"
