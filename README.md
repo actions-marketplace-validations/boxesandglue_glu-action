@@ -24,7 +24,7 @@ renders Markdown, HTML, or Lua to PDF.
 | `input`   | yes      | —        | Input file: `.md`, `.html`, or `.lua`. |
 | `output`  | no       | `<input>.pdf` next to input | Output PDF path. Parent directory is created if missing. |
 | `css`     | no       | —        | Additional CSS file (passed to glu as `--css`). |
-| `version` | no       | `latest` | glu release tag, e.g. `v0.2.0`. `latest` resolves the most recent release at runtime. |
+| `version` | no       | `latest` | glu release tag, e.g. `v0.0.47`. `latest` resolves the most recent release at runtime. |
 | `args`    | no       | —        | Extra arguments passed verbatim to glu — escape hatch for flags not modelled above. Word-split on whitespace (no shell quoting). |
 
 PDF/UA, document title, language and other metadata are set in the Markdown
@@ -45,7 +45,7 @@ frontmatter or via Lua, **not** through this action. See the
 - uses: boxesandglue/glu-action@v1
   with:
     input: docs/manual.md
-    version: v0.2.0
+    version: v0.0.47
 ```
 
 ### Pass extra flags
